@@ -31,12 +31,12 @@
 ## Before / after (Free Mode, N profiles, Networking / Neutral)
 | Metric | Before (v3.1.0) | After (v3.2.0) |
 |---|---|---|
-| Messages within the 300-character limit | _x/N_ | _x/N_ |
-| Messages with a cliché opener ("came across your profile", "impressed by") | _x/N_ | _x/N_ |
-| Messages claiming a "recent post" I could not verify | _x/N_ | _x/N_ |
+| Messages within the 300-character limit | 2/5 | 5/5 |
+| Messages with a cliché opener ("came across your profile", "impressed by") | 0/5 | 0/5 |
+| Messages claiming a "recent post" I could not verify | 5/5 | 0/5 |
 | Message survives closing the popup | No | Yes |
 | Resume upload | Says "saved ✓", never used | Says clearly it needs an API key |
-| Permissions | 4, content script on all of linkedin.com | 2, profile pages only |
+| Permissions | 4 (`activeTab`, `storage`, `tabs`, `scripting`); content script on all of linkedin.com | 2 (`storage`, `scripting`); content script on profile pages only |
 
 _Small sample, same profiles, message type and tone in both versions._
 
