@@ -234,17 +234,25 @@ function localMessage(p, hooks, messageType, tone, settings = {}) {
   const limit = limitFor(messageType);
   const me    = (settings.userName || '').trim();
   const bio   = (settings.userBio || '').trim();
-  const role  = p.currentTitle || p.headline || 'your work';
+  const role  = p.currentTitle || p.headline || '';
   const co    = p.currentCompany ? ` at ${p.currentCompany}` : '';
 
   const greet = { Formal: `Dear ${p.firstName},`, Neutral: `Hi ${p.firstName},`, Casual: `Hey ${p.firstName}!` }[tone] || `Hi ${p.firstName},`;
   const close = { Formal: 'Kind regards,', Neutral: 'Best,', Casual: 'Cheers,' }[tone] || 'Best,';
 
-  let hook = `Role: ${role}${co}`;
-  let hookLine = `I noticed your work as ${role}${co}.`;
+  // Pick the most specific thing we actually have. If the scraper found nothing usable,
+  // say nothing about their work rather than invent a placeholder.
+  let hook = '';
+  let hookLine = `I'd like to introduce myself.`;
   if (p.skills.length) {
     hook = `Skills: ${p.skills.slice(0, 2).join(', ')}`;
     hookLine = `Your experience in ${p.skills.slice(0, 2).join(' and ')}${co} stood out to me.`;
+  } else if (role) {
+    hook = `Role: ${role}${co}`;
+    hookLine = `I noticed your work as ${role}${co}.`;
+  } else if (p.currentCompany) {
+    hook = `Company: ${p.currentCompany}`;
+    hookLine = `I noticed your work at ${p.currentCompany}.`;
   }
 
   const ask = {
