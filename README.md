@@ -14,7 +14,7 @@
 | 3 | No visible length limit, although LinkedIn caps connection notes (~300 chars) | Messages can be silently too long | **Fixed and tested** (live counter, red when over, bio auto-dropped if needed) |
 | 4 | Closing the popup (any click on the page) lost the message; edits were not saved to Recent | Lost work | **Fixed and tested** (message restored on reopen; edits persist) |
 | 5 | Resume upload said "saved ✓" but was never used anywhere | A feature that silently does nothing | **Partly fixed, tested** (now says clearly it needs an API key). **Resume summarising itself is untested** |
-| 6 | Privacy note said no data leaves the device; untrue in AI mode. Extra `tabs`/`activeTab` permissions; content script on all of linkedin.com | Trust and least privilege | **Fixed and tested** (2 permissions, profile pages only, accurate copy) |
+| 6 | Privacy note said no data leaves the device; untrue in AI mode. Extra `tabs`/`activeTab` permissions; content script on all of linkedin.com | Trust and least privilege | **Fixed and tested** (2 permissions; content script on profile pages only, accurate copy) |
 | 7 | AI prompt: no system prompt, no grounding rule, no cliché ban, asked for 600 chars, scraped text unfenced (prompt-injection surface) | Generic or invented messages | **Fixed in code, not tested** (needs API key) |
 | 8 | No timeout/retry on API calls; raw API errors shown | Fragile on 429/5xx | **Fixed in code, not tested** |
 | 9 | Deep Mode's second step did nothing real | Feature was cosmetic | **Real AI hook-ranker written, not tested**. In Free Mode it shows on-device hooks and is labelled as such |
@@ -28,7 +28,7 @@
 3. **Deep Mode made honest:** removed the false "OpenAI" claims, relabelled the steps, added an AI hook-ranker that falls back to on-device rules and says which ran. *(labels and on-device path tested; AI path untested)*
 4. **Reliability:** results are saved by the service worker, so closing the popup does not lose a generated message; the popup restores it; edits persist to Recent. *(tested)*
 
-## Before / after (Free Mode, N profiles, Networking / Neutral)
+## Before / after (Free Mode, 5 profiles, Networking / Neutral)
 | Metric | Before (v3.1.0) | After (v3.2.0) |
 |---|---|---|
 | Messages within the 300-character limit | 2/5 | 5/5 |
