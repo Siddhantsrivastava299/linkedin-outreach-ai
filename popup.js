@@ -19,6 +19,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   wireCurrentEvents();
   wireRecentEvents();
   await checkCurrentPage();
+  await restoreLastResult();
   await loadSettings();
   await renderRecentContacts();
   await updateModeBadge();
@@ -64,6 +65,52 @@ function setMode(mode) {
   clearCurrentStatus();
 }
 
+// ─── Restore work after the popup was closed ──────────────────────────────────
+const normUrl = (u) => String(u || '').split('?')[0].replace(/\/$/, '');
+let waitingForBackground = false;
+
+async function restoreLastResult() {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab?.url) return;
+  const url = normUrl(tab.url);
+  const { lastResult, pendingGeneration } = await chrome.storage.local.get(['lastResult', 'pendingGeneration']);
+
+  if (pendingGeneration && normUrl(pendingGeneration.profileUrl) === url && Date.now() - pendingGeneration.startedAt < 60000) {
+    waitingForBackground = true;
+    showCurrentStatus('Still writing your message. It will appear here.');
+  }
+  if (showIfFresh(lastResult, url)) showCurrentStatus('Restored your last message for this profile.', 'success');
+}
+
+function showIfFresh(r, url) {
+  if (!r || normUrl(r.profileUrl) !== url || Date.now() - r.timestamp > 30 * 60000) return false;
+  currentProfile = r.profile;
+  if (r.messageType) document.getElementById('message-type').value = r.messageType;
+  renderProfileCard(r.profile);
+  renderMessage(r.message, r.hook, r.source);
+  return true;
+}
+
+chrome.storage.onChanged.addListener(async (changes) => {
+  if (!waitingForBackground || !changes.lastResult) return;
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (showIfFresh(changes.lastResult.newValue, normUrl(tab?.url))) {
+    waitingForBackground = false;
+    showCurrentStatus('Message ready.', 'success');
+  }
+});
+
+// Save the user's edits so Recent always holds what they actually plan to send
+let editTimer;
+async function saveEdit() {
+  const url = currentProfile?.profileUrl;
+  if (!url) return;
+  const message = document.getElementById('generated-message').value;
+  await Cache.updateMessage(url, message);
+  const { lastResult } = await chrome.storage.local.get('lastResult');
+  if (lastResult && lastResult.profileUrl === url) await chrome.storage.local.set({ lastResult: { ...lastResult, message } });
+}
+
 // ─── Page check ───────────────────────────────────────────────────────────────
 async function checkCurrentPage() {
   const tabs      = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -86,7 +133,11 @@ function wireCurrentEvents() {
   document.getElementById('deep-generate-btn').addEventListener('click', handleDeepGenerate);
   document.getElementById('regenerate-btn').addEventListener('click', handleRegenerate);
   document.getElementById('copy-btn').addEventListener('click', handleCopy);
-  document.getElementById('generated-message').addEventListener('input', updateCharCount);
+  document.getElementById('generated-message').addEventListener('input', () => {
+    updateCharCount();
+    clearTimeout(editTimer);
+    editTimer = setTimeout(saveEdit, 500);
+  });
   document.getElementById('message-type').addEventListener('change', updateCharCount);
 }
 
@@ -140,14 +191,6 @@ async function handleScrapeAndGenerate() {
     const result = await callQuickGenerate(profile);
     renderMessage(result.message, result.hook, result.source);
 
-    await Cache.addContact({
-      profileUrl: profile.profileUrl || '',
-      name:       profile.name       || 'Unknown',
-      headline:   profile.headline   || '',
-      company:    profile.currentCompany || '',
-      message:    result.message,
-      timestamp:  Date.now()
-    });
 
     showCurrentStatus('Message ready.', 'success');
   } catch (err) {
@@ -285,14 +328,6 @@ async function handleDeepGenerate() {
       renderMessage(response.generatedMessage, response.hook, response.source);
       showCurrentStatus('Message ready.', 'success');
 
-      await Cache.addContact({
-        profileUrl: deepProfileJSON.profileUrl || '',
-        name:       deepProfileJSON.name || 'Unknown',
-        headline:   deepProfileJSON.headline || '',
-        company:    deepProfileJSON.currentCompany || '',
-        message:    response.generatedMessage,
-        timestamp:  Date.now()
-      });
     }
   );
 }

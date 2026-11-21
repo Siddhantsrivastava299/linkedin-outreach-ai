@@ -24,11 +24,19 @@ const Cache = (() => {
     });
   }
 
+  async function updateMessage(profileUrl, message) {
+    const contacts = await getContacts();
+    const updated  = contacts.map(c => c.profileUrl === profileUrl ? { ...c, message } : c);
+    return new Promise((resolve) => {
+      chrome.storage.local.set({ [KEY]: updated }, resolve);
+    });
+  }
+
   async function clearContacts() {
     return new Promise((resolve) => {
       chrome.storage.local.set({ [KEY]: [] }, resolve);
     });
   }
 
-  return { getContacts, addContact, clearContacts };
+  return { getContacts, addContact, updateMessage, clearContacts };
 })();

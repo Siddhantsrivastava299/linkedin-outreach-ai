@@ -1,5 +1,7 @@
 'use strict';
 
+importScripts('utils/cache.js'); // shared Recent-contacts storage
+
 // background.js — Standalone version (assessment build)
 // No company server, no license key. Messages are generated locally for free.
 // Optional: a user can paste THEIR OWN Anthropic API key in Settings to get AI-written messages.
@@ -89,9 +91,12 @@ async function handleQuickGenerate(data, sendResponse) {
     const p        = normalizeProfile(profileData);
     const hooks    = buildHooks(p);
     const settings = await getSettings();
+    await startPending(p.profileUrl);
     const result   = await writeMessage(p, hooks, messageType, tone, settings);
+    await finishGeneration(p, result, messageType);
     sendResponse({ success: true, generatedMessage: result.message, hook: result.hook, source: result.source });
   } catch (err) {
+    await chrome.storage.local.remove('pendingGeneration');
     sendResponse({ success: false, error: err.message });
   }
 }
@@ -157,11 +162,31 @@ async function handleDeepGenerate({ profileJSON, enrichmentJSON, messageType, to
   try {
     const settings = await getSettings();
     const hooks    = enrichmentJSON?.topHooks || [];
+    await startPending(profileJSON?.profileUrl);
     const result   = await writeMessage(profileJSON, hooks, messageType, tone, settings);
+    await finishGeneration(profileJSON, result, messageType);
     sendResponse({ status: 'generate_complete', generatedMessage: result.message, hook: result.hook, source: result.source });
   } catch (err) {
+    await chrome.storage.local.remove('pendingGeneration');
     sendResponse({ status: 'error', error: err.message });
   }
+}
+
+// ─── Persist results here, not in the popup ───────────────────────────────────
+// The popup is destroyed the moment the user clicks back onto the page. Saving from the
+// service worker means the message is never lost, and the popup restores it on reopen.
+async function startPending(profileUrl) {
+  await chrome.storage.local.set({ pendingGeneration: { profileUrl: profileUrl || '', startedAt: Date.now() } });
+}
+
+async function finishGeneration(p, result, messageType) {
+  const contact = {
+    profileUrl: p.profileUrl || '', name: p.name || 'Unknown', headline: p.headline || '',
+    company: p.currentCompany || '', message: result.message, timestamp: Date.now()
+  };
+  await Cache.addContact(contact);
+  await chrome.storage.local.set({ lastResult: { ...contact, profile: p, hook: result.hook, source: result.source, messageType } });
+  await chrome.storage.local.remove('pendingGeneration');
 }
 
 // ─── Profile helpers ──────────────────────────────────────────────────────────
