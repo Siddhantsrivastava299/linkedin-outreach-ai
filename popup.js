@@ -18,17 +18,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   await checkCurrentPage();
   await loadSettings();
   await renderRecentContacts();
-  await checkLicenseStatus();
+  await updateModeBadge();
 });
 
-// ─── License key status in header ────────────────────────────────────────────
-async function checkLicenseStatus() {
+// ─── Mode badge in header ────────────────────────────────────────────
+async function updateModeBadge() {
   const s   = await loadStoredSettings();
   const key = (s.userApiKey || '').trim();
   const el  = document.getElementById('key-status');
   el.textContent = key ? '● AI Mode' : '● Free Mode';
   el.className   = 'key-status active';
-  document.getElementById('no-key-warning').classList.add('hidden');
 }
 
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
@@ -278,8 +277,7 @@ async function handleDeepGenerate() {
 
       setLayerStatus(3, 'done', 'Done');
       renderMessage(response.generatedMessage);
-      const rem = response.remaining !== undefined ? ` (${response.remaining} messages left today)` : '';
-      showCurrentStatus(`Message ready.${rem}`, 'success');
+      showCurrentStatus('Message ready.', 'success');
 
       await Cache.addContact({
         profileUrl: deepProfileJSON.profileUrl || '',
@@ -325,7 +323,7 @@ async function handleSaveSettings() {
   }
   await new Promise(resolve => chrome.storage.local.set(savePayload, resolve));
   showSettingsStatus('Settings saved!', 'success');
-  await checkLicenseStatus();
+  await updateModeBadge();
 }
 
 async function handleValidateKey() {
@@ -351,7 +349,7 @@ async function handleValidateKey() {
     el.className   = 'key-validation-status valid';
     const s = await loadStoredSettings();
     await new Promise(resolve => chrome.storage.local.set({ ...s, userApiKey: apiKey }, resolve));
-    await checkLicenseStatus();
+    await updateModeBadge();
   } else {
     el.textContent = `✗ ${result?.reason || 'Key did not work'}`;
     el.className   = 'key-validation-status invalid';
