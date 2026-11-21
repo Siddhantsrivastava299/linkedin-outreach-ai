@@ -208,19 +208,19 @@ async function handleEnrich() {
     setLayerStatus(1, 'error', 'Failed');
     showCurrentStatus('Could not scrape. Are you on a LinkedIn profile page?', 'error');
     isEnriching = false;
-    setButtonLoading('enrich-btn', 'enrich-label', 'enrich-spinner', false, 'Scrape + Enrich (L1 + L2)');
+    setButtonLoading('enrich-btn', 'enrich-label', 'enrich-spinner', false, 'Scrape + Find Hooks');
     return;
   }
 
   currentProfile = rawProfileData;
   renderProfileCard(rawProfileData);
   setLayerStatus(1, 'running', 'Parsing…');
-  setButtonLoading('enrich-btn', 'enrich-label', 'enrich-spinner', true, 'Running AI layers…');
+  setButtonLoading('enrich-btn', 'enrich-label', 'enrich-spinner', true, 'Finding best hooks…');
   showCurrentStatus('Enriching…');
 
   chrome.runtime.sendMessage({ type: 'RUN_ENRICH', payload: { rawProfileData } }, (response) => {
     isEnriching = false;
-    setButtonLoading('enrich-btn', 'enrich-label', 'enrich-spinner', false, 'Scrape + Enrich (L1 + L2)');
+    setButtonLoading('enrich-btn', 'enrich-label', 'enrich-spinner', false, 'Scrape + Find Hooks');
 
     if (chrome.runtime.lastError || !response) {
       setLayerStatus(1, 'error', 'Error');
@@ -236,15 +236,18 @@ async function handleEnrich() {
       return;
     }
 
-    setLayerStatus(1, 'done', 'Done');
-    setLayerStatus(2, 'done', 'Done');
     deepProfileJSON    = response.profileJSON;
     deepEnrichmentJSON = response.enrichmentJSON;
+    setLayerStatus(1, 'done', 'Done');
+    setLayerStatus(2, 'done', deepEnrichmentJSON.source === 'ai' ? 'AI' : 'On-device');
     renderProfileCard({ name: deepProfileJSON.name, headline: deepProfileJSON.headline, currentCompany: deepProfileJSON.currentCompany });
     renderHooks(deepEnrichmentJSON);
     setLayerStatus(3, '', 'Ready');
     document.getElementById('deep-generate-btn').disabled = false;
-    showCurrentStatus('Enrichment done. Hit Generate Message.', 'success');
+    if (deepEnrichmentJSON.warning) showCurrentStatus(deepEnrichmentJSON.warning, 'error');
+    else showCurrentStatus(deepEnrichmentJSON.source === 'ai'
+      ? 'Hooks picked by AI. Hit Generate Message.'
+      : 'Hooks picked on-device (add an API key for AI-ranked hooks). Hit Generate Message.', 'success');
   });
 }
 
@@ -254,7 +257,7 @@ async function handleDeepGenerate() {
   isGenerating = true;
   setButtonLoading('deep-generate-btn', 'deep-gen-label', 'deep-gen-spinner', true, 'Writing message…');
   setLayerStatus(3, 'running', 'Writing…');
-  showCurrentStatus('Layer 3: writing message…');
+  showCurrentStatus('Writing message…');
   hideMessage();
 
   const messageType = document.getElementById('message-type').value;
@@ -264,7 +267,7 @@ async function handleDeepGenerate() {
     { type: 'RUN_GENERATE', payload: { profileJSON: deepProfileJSON, enrichmentJSON: deepEnrichmentJSON, messageType, tone } },
     async (response) => {
       isGenerating = false;
-      setButtonLoading('deep-generate-btn', 'deep-gen-label', 'deep-gen-spinner', false, 'Generate Message (L3)');
+      setButtonLoading('deep-generate-btn', 'deep-gen-label', 'deep-gen-spinner', false, 'Generate Message');
 
       if (chrome.runtime.lastError || !response) {
         setLayerStatus(3, 'error', 'Error');
