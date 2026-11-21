@@ -8,6 +8,9 @@ let deepProfileJSON    = null;
 let deepEnrichmentJSON = null;
 let isEnriching        = false;
 
+// Keep in sync with CHAR_LIMITS in background.js
+const CHAR_LIMITS = { Networking: 300, Collaboration: 300, Job: 500, Referral: 500 };
+
 // ─── Boot ─────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   initTabs();
@@ -84,6 +87,7 @@ function wireCurrentEvents() {
   document.getElementById('regenerate-btn').addEventListener('click', handleRegenerate);
   document.getElementById('copy-btn').addEventListener('click', handleCopy);
   document.getElementById('generated-message').addEventListener('input', updateCharCount);
+  document.getElementById('message-type').addEventListener('change', updateCharCount);
 }
 
 function wireSettingsEvents() {
@@ -133,15 +137,15 @@ async function handleScrapeAndGenerate() {
     renderProfileCard(profile);
     setButtonLoading('scrape-btn', 'btn-label', 'btn-spinner', true, 'Generating message…');
 
-    const message = await callQuickGenerate(profile);
-    renderMessage(message);
+    const result = await callQuickGenerate(profile);
+    renderMessage(result.message, result.hook, result.source);
 
     await Cache.addContact({
       profileUrl: profile.profileUrl || '',
       name:       profile.name       || 'Unknown',
       headline:   profile.headline   || '',
       company:    profile.currentCompany || '',
-      message,
+      message:    result.message,
       timestamp:  Date.now()
     });
 
@@ -155,10 +159,9 @@ async function handleScrapeAndGenerate() {
 }
 
 async function callQuickGenerate(profile) {
-  const settings    = await loadStoredSettings();
   const messageType = document.getElementById('message-type').value;
   const tone        = document.getElementById('tone').value;
-  return sendToBackground({ action: 'generateMessage', data: { profileData: profile, settings, messageType, tone } });
+  return sendToBackground({ action: 'generateMessage', data: { profileData: profile, messageType, tone } });
 }
 
 async function handleRegenerate() {
@@ -170,8 +173,8 @@ async function handleRegenerate() {
   setButtonLoading('scrape-btn', 'btn-label', 'btn-spinner', true, 'Regenerating…');
 
   try {
-    const message = await callQuickGenerate(currentProfile);
-    renderMessage(message);
+    const result = await callQuickGenerate(currentProfile);
+    renderMessage(result.message, result.hook, result.source);
     showCurrentStatus('Regenerated!', 'success');
   } catch (err) {
     showCurrentStatus(err.message, 'error');
@@ -276,7 +279,7 @@ async function handleDeepGenerate() {
       }
 
       setLayerStatus(3, 'done', 'Done');
-      renderMessage(response.generatedMessage);
+      renderMessage(response.generatedMessage, response.hook, response.source);
       showCurrentStatus('Message ready.', 'success');
 
       await Cache.addContact({
@@ -301,7 +304,7 @@ async function loadSettings() {
     document.getElementById('file-label').textContent = s.resumeFileName;
     document.getElementById('file-upload-area').classList.add('has-file');
     const statusEl = document.getElementById('resume-status');
-    statusEl.textContent = `${s.resumeFileName} saved ✓`;
+    statusEl.textContent = s.resumeSummary ? `${s.resumeFileName} summarised ✓` : `${s.resumeFileName}: not summarised yet. Add your API key and save again.`;
     statusEl.className   = 'resume-status success';
     statusEl.classList.remove('hidden');
   }
@@ -313,13 +316,29 @@ async function handleSaveSettings() {
   const userBio    = document.getElementById('user-bio').value.trim();
 
   const savePayload = { userApiKey, userName, userBio };
+  const statusEl    = document.getElementById('resume-status');
+
   if (pendingResume) {
-    savePayload.resumeBase64   = pendingResume.base64;
-    savePayload.resumeFileName = pendingResume.fileName;
-    pendingResume = null;
-    const statusEl = document.getElementById('resume-status');
-    statusEl.textContent = 'Resume saved ✓';
-    statusEl.className   = 'resume-status success';
+    if (!userApiKey) {
+      statusEl.textContent = 'Add your API key to use your resume. It is read once and only a short summary is kept.';
+      statusEl.className   = 'resume-status error';
+    } else {
+      statusEl.textContent = 'Reading your resume…';
+      statusEl.className   = 'resume-status pending';
+      await new Promise(resolve => chrome.storage.local.set({ userApiKey }, resolve)); // background reads the key from storage
+      const res = await new Promise(resolve =>
+        chrome.runtime.sendMessage({ type: 'SUMMARIZE_RESUME', payload: { base64: pendingResume.base64 } }, resolve));
+      if (res && res.success) {
+        savePayload.resumeSummary  = res.summary;
+        savePayload.resumeFileName = pendingResume.fileName;
+        statusEl.textContent = `${pendingResume.fileName} summarised ✓ (the PDF itself is not stored)`;
+        statusEl.className   = 'resume-status success';
+        pendingResume = null;
+      } else {
+        statusEl.textContent = `Could not read resume: ${res?.error || 'unknown error'}`;
+        statusEl.className   = 'resume-status error';
+      }
+    }
   }
   await new Promise(resolve => chrome.storage.local.set(savePayload, resolve));
   showSettingsStatus('Settings saved!', 'success');
@@ -395,15 +414,26 @@ function renderProfileCard(data) {
   document.getElementById('profile-company').textContent  = data.currentCompany || '';
 }
 
-function renderMessage(text) {
+function renderMessage(text, hook, source) {
   document.getElementById('generated-message').value = text;
   document.getElementById('message-section').classList.remove('hidden');
+
+  const note = document.getElementById('hook-note');
+  const bits = [];
+  if (hook)  bits.push(`Personalised using: ${hook}`);
+  if (source === 'local') bits.push('Free Mode template. Add an API key in Settings for AI-written messages.');
+  note.textContent = bits.join(' · ');
+  note.classList.toggle('hidden', bits.length === 0);
   updateCharCount();
 }
 
 function hideMessage() { document.getElementById('message-section').classList.add('hidden'); }
 function updateCharCount() {
-  document.getElementById('char-count').textContent = `${document.getElementById('generated-message').value.length} chars`;
+  const len   = document.getElementById('generated-message').value.length;
+  const limit = CHAR_LIMITS[document.getElementById('message-type').value] || 300;
+  const el    = document.getElementById('char-count');
+  el.textContent = `${len} / ${limit} chars`;
+  el.classList.toggle('over-limit', len > limit);
 }
 
 async function handleCopy() {
@@ -508,7 +538,7 @@ function sendToBackground(msg) {
       if (!response) { reject(new Error('No response from background.')); return; }
       if (!response.success) { reject(new Error(response.error || 'Background returned an error.')); return; }
       if (response.data !== undefined) { resolve(response.data); return; }
-      if (response.generatedMessage !== undefined) { resolve(response.generatedMessage); return; }
+      if (response.generatedMessage !== undefined) { resolve({ message: response.generatedMessage, hook: response.hook, source: response.source }); return; }
       reject(new Error('Unexpected response: ' + JSON.stringify(Object.keys(response))));
     });
   });
@@ -556,7 +586,7 @@ function processResumeFile(file) {
 
 function loadStoredSettings() {
   return new Promise(resolve => {
-    chrome.storage.local.get(['userApiKey','userName','userBio','resumeBase64','resumeFileName'], resolve);
+    chrome.storage.local.get(['userApiKey','userName','userBio','resumeSummary','resumeFileName'], resolve);
   });
 }
 

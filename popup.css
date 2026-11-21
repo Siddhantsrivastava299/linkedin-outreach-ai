@@ -757,3 +757,7 @@ body {
 .resume-status.success { background: var(--success-bg); color: var(--success); }
 .resume-status.error   { background: var(--error-bg);   color: var(--error);   }
 .resume-status.pending { background: var(--warning-bg); color: var(--warning); }
+
+/* ── Message quality UX ── */
+.hook-note { font-size: 11px; color: #64748b; margin: 6px 0 2px; line-height: 1.4; }
+.char-count.over-limit { color: #dc2626; font-weight: 600; }
